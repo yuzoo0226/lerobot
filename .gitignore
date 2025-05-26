@@ -20,6 +20,7 @@ wandb
 # Data
 data
 outputs
+my_local_data_dir
 
 # Apple
 .DS_Store

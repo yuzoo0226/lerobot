@@ -38,6 +38,92 @@ from lerobot.common.robot_devices.utils import busy_wait
 from lerobot.common.utils.utils import get_safe_torch_device, has_method
 
 
+def _ensure_safe_goal_position_list(
+    goal_pos: list[float], present_pos: list[float], max_relative_target: float | list[float], close_th: float = 0.2
+) -> list[float]:
+    if isinstance(max_relative_target, float) or isinstance(max_relative_target, int):
+        max_relative_target = [max_relative_target] * len(goal_pos)
+
+    diff = [g - p for g, p in zip(goal_pos, present_pos)]
+    safe_diff = [
+        max(-mrt, min(d, mrt))  # clamp to [-mrt, mrt]
+        for d, mrt in zip(diff, max_relative_target)
+    ]
+    safe_goal_pos = [p + sd for p, sd in zip(present_pos, safe_diff)]
+
+    has_diff_gap = any(abs(g - s) > close_th for g, s in zip(goal_pos, safe_goal_pos))
+
+    if any(abs(g - s) > close_th for g, s in zip(goal_pos, safe_goal_pos)):
+        logging.warning(
+            "Relative goal position magnitude had to be clamped to be safe.\n"
+            f"  requested relative goal position target: {diff}\n"
+            f"    clamped relative goal position target: {safe_diff}"
+        )
+
+    return safe_goal_pos, has_diff_gap
+
+
+def _do_rest_position(robot: Robot, name: str, relative_max_target=2.0):
+    torque_disavle = 0
+    torque_enable = 1
+
+    rest_position_array = {
+        "right": [1.0546875, 194.23828, 194.41406, 180.43945, 180.26367, 1.8457031, -90.26367, 3.3398438, 12.521151],
+        "left": [1.1425781, 196.08398, 196.17188, 181.14258, 181.8457, -2.109375, -76.37695, -1.3183594, 16.156462]
+    }
+
+    robot.leader_arms[name].write("Torque_Enable", torque_enable)
+    while True:
+        present_leader_position = robot.leader_arms[name].read("Present_Position")
+        safe_next_leader_pose, has_diff_gap_leader = _ensure_safe_goal_position_list(rest_position_array[name], present_leader_position, max_relative_target=[relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target])
+        robot.leader_arms[name].write("Goal_Position", safe_next_leader_pose)
+        # print(f"write {safe_next_leader_pose} for {name} leader arm")
+
+        present_position_follower = robot.follower_arms[name].read("Present_Position")
+        safe_next_follower_pose, has_diff_gap_follower = _ensure_safe_goal_position_list(rest_position_array[name], present_position_follower, max_relative_target=[relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target])
+        robot.follower_arms[name].write("Goal_Position", safe_next_follower_pose)
+        print(f"write {safe_next_follower_pose} for {name} follower arm")
+
+        time.sleep(0.2)
+        if has_diff_gap_leader is False:
+            if has_diff_gap_follower is False:
+                break
+
+    time.sleep(1)
+
+
+def _do_inital_position(robot: Robot, name: str, relative_max_target=2.0):
+    torque_disavle = 0
+    torque_enable = 1
+
+    inital_position_array = {
+        "right": [2.2851562,  141.15234, 141.32812, 133.50586, 133.33008, -0.87890625, 4.658203, 0.6152344, 12.013536],
+        "left": [1.1425781, 122.08008, 122.16797, 121.81641, 122.7832, -0.17578125, -6.6796875, -1.3183594, 15.986395]
+    }
+
+    robot.leader_arms[name].write("Torque_Enable", torque_enable)
+    robot.follower_arms[name].write("Torque_Enable", torque_enable)
+    while True:
+        present_leader_position = robot.leader_arms[name].read("Present_Position")
+        safe_next_leader_pose, has_diff_gap_leader = _ensure_safe_goal_position_list(inital_position_array[name], present_leader_position, max_relative_target=[relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target])
+        robot.leader_arms[name].write("Goal_Position", safe_next_leader_pose)
+        print(f"write {safe_next_leader_pose} for {name} leader arm")
+
+        present_position_follower = robot.follower_arms[name].read("Present_Position")
+        safe_next_follower_pose, has_diff_gap_follower = _ensure_safe_goal_position_list(inital_position_array[name], present_position_follower, max_relative_target=[relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target, relative_max_target])
+        robot.follower_arms[name].write("Goal_Position", safe_next_follower_pose)
+        print(f"write {safe_next_follower_pose} for {name} follower arm")
+
+        time.sleep(0.2)
+        if has_diff_gap_leader is False:
+            if has_diff_gap_follower is False:
+                break
+
+    time.sleep(1)
+    # robot.leader_arms[name].write("Torque_Enable", torque_disavle)
+    # time.sleep(1)
+
+
 def log_control_info(robot: Robot, dt_s, episode_index=None, frame_index=None, fps=None):
     log_items = []
     if episode_index is not None:
@@ -241,6 +327,10 @@ def control_loop(
     if dataset is not None and fps is not None and dataset.fps != fps:
         raise ValueError(f"The dataset fps should be equal to requested fps ({dataset['fps']} != {fps}).")
 
+    # time.sleep(5)
+    # _do_rest_position(robot=robot, name="left")
+    # _do_inital_position(robot, "left")
+
     timestamp = 0
     start_episode_t = time.perf_counter()
     while timestamp < control_time_s:
@@ -285,6 +375,11 @@ def control_loop(
         if events["exit_early"]:
             events["exit_early"] = False
             break
+
+        present_leader_pos = robot.leader_arms["right"].read("Present_Position")
+        print(f"right pos: {present_leader_pos}")
+        # present_leader_pos = robot.leader_arms["left"].read("Present_Position")
+        # print(f"left pos: {present_leader_pos}")
 
 
 def reset_environment(robot, events, reset_time_s, fps):

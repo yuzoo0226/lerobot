@@ -179,25 +179,25 @@ class AlohaRobotConfig(ManipulatorRobotConfig):
     cameras: dict[str, CameraConfig] = field(
         default_factory=lambda: {
             "cam_high": IntelRealSenseCameraConfig(
-                serial_number=128422271347,
+                serial_number=218622273918,
                 fps=30,
                 width=640,
                 height=480,
             ),
             "cam_low": IntelRealSenseCameraConfig(
-                serial_number=130322270656,
+                serial_number=218622277583,
                 fps=30,
                 width=640,
                 height=480,
             ),
             "cam_left_wrist": IntelRealSenseCameraConfig(
-                serial_number=218622272670,
+                serial_number=218622274387,
                 fps=30,
                 width=640,
                 height=480,
             ),
             "cam_right_wrist": IntelRealSenseCameraConfig(
-                serial_number=130322272300,
+                serial_number=218622271875,
                 fps=30,
                 width=640,
                 height=480,
